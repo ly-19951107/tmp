@@ -10,7 +10,25 @@ from main_code.data_base import get_train_task_info, get_predict_task_info, chec
 from main_code.data_processing import process_retrain_data, process_predict_data
 from main_code.training import train_model
 import argparse
-import time
+import datetime
+
+
+def train(task_key, info_list, logger):
+    """执行预测任务时，首先基于基础版本进行训练得到一个临时版本，然后根据此临时版本
+    进行预测"""
+    pred_start_time = info_list[2]
+    # 选取预测任务的数据开始时间的前150天的数据为训练数据
+    time_interval = datetime.timedelta(days=150)
+    train_start_time = pred_start_time - time_interval
+    train_end_time = pred_start_time
+    train_info = [None, None, 1, train_start_time, train_end_time, None, info_list[6],
+                  info_list[7], info_list[8]]
+    fault_data = check_time(train_info[3], train_info[4], train_info[6])
+    if not fault_data:
+        logger.warning(f"当前时间范围内,{train_info[6]}风场的数据没有故障记录！")
+    flag = process_retrain_data(task_id, train_info, logger, fault_data)
+    if flag == 1:
+        return train_model(task_key, train_info, logger)
 
 
 if __name__ == '__main__':
@@ -20,6 +38,8 @@ if __name__ == '__main__':
     parser.add_argument('--rm-version', type=int, help='删除指定的版本')
 
     args = parser.parse_args()
+    # 重训练任务不再单独被调用
+    '''
     if args.train:
         # 模型训练
         task_id = args.train
@@ -50,6 +70,8 @@ if __name__ == '__main__':
                     update_status(task_id, 2)
         logger.info("训练任务结束")
 
+    '''
+
     if args.predict:
         # 模型预测
         task_id = args.predict
@@ -62,7 +84,13 @@ if __name__ == '__main__':
             logger.warning('状态重置！')
             update_status(task_id, 2)
         else:
-            flag = process_predict_data(task_id, info, logger)
+            # 预测前先执行训练任务
+            train_res = train(task_id, info, logger)
+            if train_res:  # 生成了临时模型
+                logger.info('成功生成临时模型')
+            else:  # 未生成临时模型，则用基础模型预测
+                logger.info('未生成临时模型，调用基础模型')
+            flag = process_predict_data(task_id, info, logger, train_res)
             if flag == 3:
                 update_status(task_id, 3)
             elif flag:

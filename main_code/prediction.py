@@ -7,7 +7,6 @@
 import pandas as pd
 from main_code.paths import project
 import os
-from tqdm import tqdm
 import joblib
 import numpy as np
 import datetime
@@ -15,9 +14,8 @@ from main_code.data_base import get_mysql_conn
 import uuid
 
 
-def warning_fault2(task_id: str, data1: pd.DataFrame, data3: pd.DataFrame, info: list, logger):
+def warning_fault2(task_id: str, data1: pd.DataFrame, data3: pd.DataFrame, info: list, logger, use_tmp: int):
     """对于一个风场的数据进行故障预测"""
-    ver = info[1]
     logger.info("最大风能捕获区温度预测...")
     if data1.empty:
         machine_id_list1 = set()
@@ -35,7 +33,7 @@ def warning_fault2(task_id: str, data1: pd.DataFrame, data3: pd.DataFrame, info:
             wtg_desc = data['wtg_desc'].iloc[0]
             wtg_mc = data['wtg_mc'].iloc[0]
             province = data['province'].iloc[0]
-            temp1 = predict_temp(data, "one", ver)
+            temp1 = predict_temp(data, "one", task_id, use_tmp)
             df = pd.DataFrame({
                 "localtime": data['localtime'],
                 "site_id": site,
@@ -72,7 +70,7 @@ def warning_fault2(task_id: str, data1: pd.DataFrame, data3: pd.DataFrame, info:
             wtg_desc = data['wtg_desc'].iloc[0]
             wtg_mc = data['wtg_mc'].iloc[0]
             province = data['province'].iloc[0]
-            temp3 = predict_temp(data, "three", ver)
+            temp3 = predict_temp(data, "three", task_id, use_tmp)
             df = pd.DataFrame({
                 "localtime": data['localtime'],
                 "site_id": site,
@@ -116,7 +114,7 @@ def warning_fault2(task_id: str, data1: pd.DataFrame, data3: pd.DataFrame, info:
         wtg_mc = data['wtg_mc'].iloc[0]
         province = data['province'].iloc[0]
         type_id = data['type_id'].iloc[0]
-        start_time = temp_out_gauge(data, info)
+        start_time = temp_out_gauge(task_id, data, info, use_tmp)
         if start_time:
             fault_res.append(pd.DataFrame({
                 "site_id": site_id,
@@ -175,26 +173,32 @@ def mid_data_save(task_id, data, id_, logger):
     conn.close()
 
 
-def predict_temp(data: pd.DataFrame, state: str, ver: int):
+def predict_temp(data: pd.DataFrame, state: str, task_id: str, use_tmp: int):
     """对预测的数据进行标准化，然后预测其油温"""
+    if use_tmp:
+        mms_model_name = f"{state}_mms_tmp_{task_id}.m"
+        rf_model_name = f"{state}_rf_tmp_{task_id}.m"
+    else:
+        mms_model_name = f"{state}_mms_v1.m"
+        rf_model_name = f"{state}_rf_v1.m"
+
     data = data.iloc[:, 8:]
     x = data.drop('齿轮箱油温_avg', axis=1)
-    path = os.path.join(project.feature_dir, f"{state}_mms_v{ver}.m")
+    path = os.path.join(project.feature_dir, mms_model_name)
     model = joblib.load(path)
     x = model.transform(x)
-    path = os.path.join(project.model_dir, f"{state}_rf_v{ver}.m")
+    path = os.path.join(project.model_dir, rf_model_name)
     model = joblib.load(path)
     y_predict = model.predict(x)
     return y_predict
 
 
-def temp_out_gauge(data: pd.DataFrame, info: list):
+def temp_out_gauge(task_id, data: pd.DataFrame, info: list, use_tmp: int):
     """"""
-    ver = info[1]
     if data.empty:
         return None
-    loss1 = loss_data("one", ver)
-    loss3 = loss_data("three", ver)
+    loss1 = loss_data(task_id, "one", use_tmp)
+    loss3 = loss_data(task_id, "three", use_tmp)
     loss_thresh = [min(loss1[0], loss3[0]), max(loss1[1], loss3[1])]
     data.set_index(['localtime'], inplace=True)
     data1 = data.resample('h', label='left').count()['machine_id']
@@ -218,8 +222,12 @@ def temp_out_gauge(data: pd.DataFrame, info: list):
     return None
 
 
-def loss_data(state: str, ver: int):
-    data = pd.read_csv(os.path.join(project.threshold_dir, f"{state}_v{ver}.csv"))
+def loss_data(task_id: str, state: str, use_tmp: int):
+    if use_tmp:
+        csv_name = f"{state}_tmp_{task_id}.csv"
+    else:
+        csv_name = f'{state}_v1.csv'
+    data = pd.read_csv(os.path.join(project.threshold_dir, csv_name))
     loss = data['loss_data']
     return get_thresh_value(loss)
 

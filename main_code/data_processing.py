@@ -4,13 +4,13 @@
 @Time     : 2020/4/21 11:07
 @Author   : Jarvis
 """
-from main_code.data_base import get_data_from_hive, get_wtg_id_list, get_mysql_conn, get_value_scope, insert_data_missing_info
+from main_code.data_base import get_data_from_hive, get_wtg_id_list, get_mysql_conn, get_value_scope, \
+    insert_data_missing_info
 import pandas as pd
 import numpy as np
 import os
 from main_code.paths import project
 import datetime
-
 
 REMOVE_COPY = 0
 if REMOVE_COPY:
@@ -22,9 +22,9 @@ def process_retrain_data(task_id: str, info: list, logger, fault_data: int):
     return process_data(task_id, info, logger, 'train', fault_data)
 
 
-def process_predict_data(task_id: str, info: list, logger):
+def process_predict_data(task_id: str, info: list, logger, use_tmp: int):
     """处理预测任务对应的数据"""
-    return process_data(task_id, info, logger, 'predict')
+    return process_data(task_id, info, logger, 'predict', use_tmp)
 
 
 def handle_outliers_and_build_feature(data: pd.DataFrame, scope: dict):
@@ -58,7 +58,8 @@ def handle_outliers_and_build_feature(data: pd.DataFrame, scope: dict):
 def fault_data_filter(data: pd.DataFrame, wtg_id: str):
     conn = get_mysql_conn()
     with conn.cursor() as cr:
-        cr.execute(f"select start_time, end_time from tb_marked_data where wtg_id='{wtg_id}' and fault_type=1 and start_time not like '0000%' and end_time not like '0000%'")
+        cr.execute(
+            f"select start_time, end_time from tb_marked_data where wtg_id='{wtg_id}' and fault_type=1 and start_time not like '0000%' and end_time not like '0000%'")
         res = cr.fetchall()
         if not res:
             return data
@@ -117,7 +118,7 @@ def get_site_and_type(site_list: list, type_list: list) -> dict:
     return site_types
 
 
-def process_data(task_id: str, info: list, logger, mode: str, fault_data: int = 0):
+def process_data(task_id: str, info: list, logger, mode: str, use_tmp: int, fault_data: int = 0):
     if mode == 'train':
         start_time, end_time = info[3:5]
     else:
@@ -181,7 +182,8 @@ def process_data(task_id: str, info: list, logger, mode: str, fault_data: int = 
                 logger.info(f"当前进度：风场：{site_no}/{len(site_types)}-机型：{type_no}/{len(site_types[site])}-"
                             f"风机：{wtg_no}/{len(wtg_id_list)}")
                 data = get_data_from_hive(site_id=site, wtg_id=id_,
-                                          start_time=start_time.strftime('%Y%m%d'), end_time=end_time.strftime('%Y%m%d'), logger=logger)
+                                          start_time=start_time.strftime('%Y%m%d'),
+                                          end_time=end_time.strftime('%Y%m%d'), logger=logger)
                 if data is None:
                     logger.info(f"    WARNING:>>无法连接Hive数据库")
                     return 0
@@ -241,7 +243,7 @@ def process_data(task_id: str, info: list, logger, mode: str, fault_data: int = 
 
             all_data1, all_data3 = [], []
 
-            res = warning_fault2(task_id, data1, data3, info, logger)
+            res = warning_fault2(task_id, data1, data3, info, logger, use_tmp)
             if isinstance(res, int):
                 logger.info("当前风场无数据，无预测结果\n")
                 continue

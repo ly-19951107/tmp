@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-@Statement: Sorry for this shit code 
+@Statement: Sorry for this shit code
 @Time     : 2020/4/21 14:41
 @Author   : Jarvis
 """
@@ -107,7 +107,7 @@ def warning_fault2(task_id: str, data1: pd.DataFrame, data3: pd.DataFrame, info:
         data_cp = data.copy()
         if data.empty:
             continue
-        site_id = data['site_id'].iloc[0]
+        # site_id = data['site_id'].iloc[0]
         wtg_desc = data['wtg_desc'].iloc[0]
         site_id = data['site_id'].iloc[0]
         site_cn = data['site_cn'].iloc[0]

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-@Statement: Sorry for this shit code 
+@Statement: Sorry for this shit code
 @Time     : 2020/4/21 11:04
 @Author   : Jarvis
 """
@@ -49,15 +49,18 @@ def get_predict_task_info(task_id: str, logger):
         update_status(task_id, 1)
         # 获取关键信息
         tab = 'tb_model_predict_para'
-        cr.execute(f"select model_id, version_id, start_time, end_time, days, fault_times, convert(site_id USING utf8) "
-                   f"as site_id, type_id, wtg_id"
-                   f" from {tab} t where t.id='{res[0]}'")
-        model_id, version_id, start_time, end_time, days, fault_times, site_id, type_id, wtg_id = cr.fetchone()
-        cr.execute(f"select model_name_en from tb_model_info t where t.id = '{model_id}'")
-        model_name = cr.fetchone()[0]
-        cr.execute(f"select version_no from tb_model_version t where t.id='{version_id}'")
-        version_no = cr.fetchone()[0]
-        return [model_name, version_no, start_time, end_time, days, fault_times, site_id, type_id, wtg_id, version_id]
+        cr.execute(
+            f"select model_id, version_id, start_time, end_time, days, fault_times, convert(site_id USING utf8) "
+            f"as site_id, type_id, wtg_id, province_id, train_start_time, train_end_time"
+            f" from {tab} t where t.id='{res[0]}'")
+        model_id, version_id, start_time, end_time, days, fault_times, site_id, type_id, wtg_id, province, \
+            train_start_time, train_end_time = cr.fetchone()
+        # cr.execute(f"select model_name_en from tb_model_info t where t.id = '{model_id}'")
+        model_name = 'base_model'
+        # cr.execute(f"select version_no from tb_model_version t where t.id='{version_id}'")
+        version_no = '0'
+        return [model_name, version_no, start_time, end_time, days, fault_times, site_id, type_id, wtg_id, version_id,
+                province, train_start_time, train_end_time]
 
 
 def get_train_task_info(task_id: str, logger):
@@ -73,9 +76,9 @@ def get_train_task_info(task_id: str, logger):
         # 获取关键信息
         tab = 'tb_model_retrain_para'
         cr.execute(f"select model_id, start_time, end_time, description, convert(site_id USING utf8) as site_id, "
-                   f"type_id, wtg_id"
-                   f" from {tab} t where t.id='{res[0]}'")
-        model_id, start_time, end_time, desc, site_id, type_id, wtg_id = cr.fetchone()  # 此时得到的model_id是该重训练任务得到的重训练模型的id，需转化
+                   f"type_id, wtg_id from {tab} t where t.id='{res[0]}'")
+        model_id, start_time, end_time, desc, site_id, type_id, wtg_id = cr.fetchone()
+        # 此时得到的model_id是该重训练任务得到的重训练模型的id，需转化
         cr.execute(f"select id from tb_model_info t where t.model_name_en in ("
                    f"select model_name_en from tb_model_info t2 where t2.id='{model_id}')")
         # 下面的model_id为预测任务可调用的模型的id
@@ -110,15 +113,15 @@ def save_fault(fault: pd.DataFrame, task_id: str, logger):
             sql = f"""insert into tb_fault_results(`id`,`task_id`,`site_id`, `site_name`,`type_id`,`wtg_id`, `wtg_desc`, 
             `wtg_mc`, `province`, `warning_time`, `run_time`, `msg`,`is_fault`) 
             values ('{result_id}','{task_id}','{site_id}', '{site_cn}','{type_id}','{wtg_id}', '{wtg_desc}',  
-            '{wtg_mc}',  '{province}','{warning_time}','{predict_time}','{msg}',{is_fault})
+            '{wtg_mc}','{province}','{warning_time}','{predict_time}','{msg}',{is_fault})
             """
-#        else:
-#            sql = f"""
-#                insert into tb_fault_results(`id`,`task_id`,`site_id`, `site_name`,`type_id`,`wtg_id`, `wtg_desc`, 
-#                `wtg_mc`, `province`, `run_time`, `msg`,`is_fault`) 
-#                values ('{result_id}','{task_id}','{site_id}', '{site_cn}','{type_id}','{wtg_id}', '{wtg_desc}', 
-#                '{wtg_mc}', '{province}', '{predict_time}','{msg}',{is_fault})
-#            """
+            #        else:
+            #            sql = f"""
+            #                insert into tb_fault_results(`id`,`task_id`,`site_id`, `site_name`,`type_id`,`wtg_id`,
+            #                `wtg_desc`, `wtg_mc`, `province`, `run_time`, `msg`,`is_fault`)
+            #                values ('{result_id}','{task_id}','{site_id}', '{site_cn}','{type_id}','{wtg_id}',
+            #                '{wtg_desc}', '{wtg_mc}', '{province}', '{predict_time}','{msg}',{is_fault})
+            #            """
             cr.execute(sql)
     conn.commit()
     conn.close()
@@ -150,7 +153,6 @@ def check_time(start_time, end_time, site):
     for i in res:
         s = i[0]
         e = i[1]
-        print(s)
         if isinstance(s, str):
             s = datetime.datetime.strptime(s, '%Y-%m-%d %H:%M:%S')
         if isinstance(e, str):
@@ -220,6 +222,7 @@ def get_value_scope(type_id: str, logger):
     conn.close()
     return scope
 
+
 def insert_data_missing_info(info: dict, logger):
     conn = get_mysql_conn(logger)
     cr = conn.cursor()
@@ -228,9 +231,8 @@ def insert_data_missing_info(info: dict, logger):
         f"'{info['machine_id']}', '{info['start_time']}', '{info['end_time']}', '{info['wtg_desc']}', " \
         f"'{info['site_id']}', '{info['site_cn']}', '{info['wtg_mc']}', '{info['province']}', " \
         f"'{info['missing_columns']}', {info['task_type']})"
-    print(sql)
+    # print(sql)
     cr.execute(sql)
     conn.commit()
     cr.close()
     conn.close()
-

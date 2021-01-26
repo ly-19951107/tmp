@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-@Statement: Sorry for this shit code 
+@Statement: Sorry for this shit code
 @Time     : 2020/4/21 11:07
 @Author   : Jarvis
 """
@@ -17,14 +17,14 @@ if REMOVE_COPY:
     from main_code.data_copy import find_copy_data
 
 
-def process_retrain_data(task_id: str, info: list, logger, fault_data: int):
+def process_retrain_data(task_id: str, info: list, site, type_, logger, fault_data: int):
     """处理重训练任务对应的数据"""
-    return process_data(task_id, info, logger, 'train', fault_data)
+    return process_data(task_id, info, site, type_, logger, 'train', fault_data)
 
 
-def process_predict_data(task_id: str, info: list, logger, use_tmp: int):
+def process_predict_data(task_id: str, info: list, site, type_, logger, use_tmp: int):
     """处理预测任务对应的数据"""
-    return process_data(task_id, info, logger, 'predict', use_tmp)
+    return process_data(task_id, info, site, type_, logger, 'predict', use_tmp)
 
 
 def handle_outliers_and_build_feature(data: pd.DataFrame, scope: dict):
@@ -98,16 +98,22 @@ def state_three(data, scope):
     return data
 
 
-def get_site_and_type(site_list: list, type_list: list) -> dict:
-    """根据台账表获取每个风场所包含的机型，并与指定的机型取交集
-
+def get_site_and_type(province, site_list, type_list) -> dict:
+    """
+    根据台账表获取每个省份每个风场所包含的机型，并与指定的机型取交集
+    :param province: province id
     :param site_list: list of sites
     :param type_list: list of types
     :return: dict of site and its types
     """
-    site_types = {}
     conn = get_mysql_conn()
     cr = conn.cursor()
+    site_types = {}
+    if site_list is None:
+        cr.execute(f"select distinct site from pf_longyuan_farm2type where province = (select province from "
+                   f"tb_model_predict_para where province_id = '{province}')")
+        sites = cr.fetchall()
+        site_list = list(set(map(lambda x: x[0], sites)))
     for site in site_list:
         sql = f"select distinct type from pf_longyuan_farm2type where site = '{site}'"
         cr.execute(sql)
@@ -118,7 +124,7 @@ def get_site_and_type(site_list: list, type_list: list) -> dict:
     return site_types
 
 
-def process_data(task_id: str, info: list, logger, mode: str, use_tmp: int, fault_data: int = 0):
+def process_data(task_id: str, info: list, site, type_, logger, mode: str, use_tmp: int, fault_data: int = 0):
     if mode == 'train':
         start_time, end_time = info[3:5]
     else:
@@ -131,32 +137,32 @@ def process_data(task_id: str, info: list, logger, mode: str, use_tmp: int, faul
         conn.close()
         start_time, end_time = info[2:4]
 
-    site_id, type_id, wtg_id = info[6:9]
-
-    if not site_id:
-        logger.info("未指定风场，默认计算河北尚义麒麟山风电场")
-        site_id_list = ['17828a2b062e6000']
-    else:
-        site_id_list = list(site_id.split(','))
-        logger.info(f"指定了风场，共{len(site_id_list)}个")
-    if not type_id:
-        logger.info('未指定机型，对`UP82-1500`型号的风机进行训练')
-        type_id_list = ['UP82-1500']
-    else:
-        type_id_list = list(type_id.split(','))
-        logger.info(f"指定了机型，共{len(type_id_list)}种")
-
-    logger.info("将机型与对应型号进行匹配...")
-    site_types = get_site_and_type(site_id_list, type_id_list)
-    logger.info("匹配完成")
-    if not site_types:
-        logger.info("当前风场无可用机型")
-        return 0
-    logger.info(f"实际共需计算{len(site_types)}个风场")
+    # site_id, type_id, wtg_id = info[6:9]
+    #
+    # if not site_id:
+    #     logger.info("未指定风场，默认计算河北尚义麒麟山风电场")
+    #     site_id_list = ['17828a2b062e6000']
+    # else:
+    #     site_id_list = list(site_id.split(','))
+    #     logger.info(f"指定了风场，共{len(site_id_list)}个")
+    # if not type_id:
+    #     logger.info('未指定机型，对`UP82-1500`型号的风机进行训练')
+    #     type_id_list = ['UP82-1500']
+    # else:
+    #     type_id_list = list(type_id.split(','))
+    #     logger.info(f"指定了机型，共{len(type_id_list)}种")
+    #
+    # logger.info("将机型与对应型号进行匹配...")
+    # site_types = get_site_and_type(site_id_list, type_id_list)
+    # logger.info("匹配完成")
+    # if not site_types:
+    #     logger.info("当前风场无可用机型")
+    #     return 0
+    # logger.info(f"实际共需计算{len(site_types)}个风场")
 
     all_data1 = []
     all_data3 = []
-    site_no = 1
+    # site_no = 1
     columns = ['localtime', 'deviceid', 'siteid', 'wtg_desc', 'wtg_mc', 'site_cn', 'province',
                'type_id', '发电机有功功率_avg', '发电机转速_avg', '舱外温度_avg', '风速_avg', '风轮转速_avg', '齿轮箱油温_avg',
                '齿轮箱高速轴驱动端轴承温度_avg', '机舱与风向夹角_avg', '主轴承温度_avg', '偏航角度(扭缆角度）_avg',
@@ -165,101 +171,101 @@ def process_data(task_id: str, info: list, logger, mode: str, use_tmp: int, faul
                '风速_avg_last_1', '风轮转速_avg_last_1', '齿轮箱油温_avg_last_1',
                '齿轮箱高速轴驱动端轴承温度_avg_last_1', '机舱与风向夹角_avg_last_1', '主轴承温度_avg_last_1',
                '偏航角度(扭缆角度）_avg_last_1', '发电机非驱动端轴承温度_avg_last_1',
-               '发电机驱动端轴承温度_avg_last_1', '齿轮箱高速轴非驱动端轴承温度_avg_last_1'],
+               '发电机驱动端轴承温度_avg_last_1', '齿轮箱高速轴非驱动端轴承温度_avg_last_1']
     is_not_data = True
-    for site in site_types:
-        logger.info(f"当前计算第{site_no}/{len(site_types)}个风场...")
-        type_no = 1
-        for type_ in site_types[site]:
-            logger.info(f"当前计算第{type_no}/{len(site_types[site])}个机型...")
-            logger.info(f"获取风机id...")
-            scope = get_value_scope(type_, logger)
-            wtg_id_list = get_wtg_id_list(site, type_)
-            logger.info("获取风机id完成")
-            wtg_no = 1
-            all_data_ = []
-            for id_ in wtg_id_list:
-                logger.info(f"当前进度：风场：{site_no}/{len(site_types)}-机型：{type_no}/{len(site_types[site])}-"
-                            f"风机：{wtg_no}/{len(wtg_id_list)}")
-                data = get_data_from_hive(site_id=site, wtg_id=id_,
-                                          start_time=start_time.strftime('%Y%m%d'),
-                                          end_time=end_time.strftime('%Y%m%d'), logger=logger)
-                if data is None:
-                    logger.info(f"    WARNING:>>无法连接Hive数据库")
-                    return 0
-                if mode == 'train':
-                    inf = data_missing_check(task_id, id_, info, data, 1)
-                else:
-                    inf = data_missing_check(task_id, id_, info, data, 2)
-                if inf is not None:
-                    insert_data_missing_info(inf, logger)
-                if data.empty:
-                    logger.info(f'    WARNING:>>风机{id_}在指定的时间范围内未获取到数据！')
-                    wtg_no += 1
-                    continue
-                if mode == 'train' and fault_data:
-                    logger.info("    >>进行故障数据过滤")
-                    data = fault_data_filter(data, id_)
-                logger.info("    >>异常值处理与增加特征")
-                data = handle_outliers_and_build_feature(data, scope)
-                if data.empty:
-                    logger.info(f'    WARNING:>>风机{id_}处理后无有效数据！')
-                    wtg_no += 1
-                    continue
-                data.fillna(0, inplace=True)
-                data.insert(4, 'type_id', type_)
-                all_data_.append(data)
-                logger.info(f"    <<{id_}完成！")
-                wtg_no += 1
-            if not all_data_:
-                logger.info(f"没有获取到`{type_}`的有效数据")
-                type_no += 1
-                continue
-            data = pd.concat(all_data_, ignore_index=True)
+    # for site in site_types:
+    #     logger.info(f"当前计算第{site_no}/{len(site_types)}个风场...")
+    #     type_no = 1
+    #     for type_ in site_types[site]:
+    logger.info(f"获取风机id...")
+    scope = get_value_scope(type_, logger)
+    wtg_id_list = get_wtg_id_list(site, type_)
+    logger.info("获取风机id完成")
+    wtg_no = 1
+    all_data_ = []
+    for id_ in wtg_id_list:
+        logger.info(f"当前进度：风场：{site}-机型：{type_}-风机：{wtg_no}/{len(wtg_id_list)}")
+        data = get_data_from_hive(site_id=site, wtg_id=id_,
+                                  start_time=start_time.strftime('%Y%m%d'),
+                                  end_time=end_time.strftime('%Y%m%d'), logger=logger)
+        if data is None:
+            logger.info(f"    WARNING:>>无法连接Hive数据库")
+            return 0
+        if mode == 'train':
+            inf = data_missing_check(task_id, id_, info, data, 1)
+        else:
+            inf = data_missing_check(task_id, id_, info, data, 2)
+        if inf is not None:
+            insert_data_missing_info(inf, logger)
+        if data.empty:
+            logger.info(f'    WARNING:>>风机{id_}在指定的时间范围内未获取到数据！')
+            wtg_no += 1
+            continue
+        if mode == 'train' and fault_data:
+            logger.info("    >>进行故障数据过滤")
+            data = fault_data_filter(data, id_)
+        logger.info("    >>异常值处理与增加特征")
+        data = handle_outliers_and_build_feature(data, scope)
+        if data.empty:
+            logger.info(f'    WARNING:>>风机{id_}处理后无有效数据！')
+            wtg_no += 1
+            continue
+        data.fillna(0, inplace=True)
+        data.insert(4, 'type_id', type_)
+        all_data_.append(data)
+        logger.info(f"    <<{id_}完成！")
+        wtg_no += 1
+    if not all_data_:
+        logger.info(f"没有获取到`{type_}`的有效数据")
+        data = pd.DataFrame(columns=columns)
+        # type_no += 1
+        # continue
+    else:
+        data = pd.concat(all_data_, ignore_index=True)
 
-            logger.info(f"{site_no}/{len(site_types)}-{type_no}/{len(site_types[site])}-`{type_}`正在进行工况划分...")
-            data1 = state_one(data, scope)
-            all_data1.append(data1)
-            data3 = state_three(data, scope)
-            all_data3.append(data3)
-            logger.info(f"`{type_}`工况划分完成...")
-            type_no += 1
-        site_no += 1
-        if mode == 'predict':
-            # 如果是预测任务，如果选择多个风场，则处理完一个预测一个，不再等待全部处理后再预测
-            logger.info(f"风场{site}数据处理完成，开始进行故障预测...")
-            from main_code.prediction import warning_fault2
-            from main_code.data_base import save_fault
-            # 对于预测任务而言，当一个风场的所有数据处理完成后就进行预测，而不再进行缓存
-            # 因此，需要将`all_data1`和`all_data3`恢复为空，以存储下一个风场的数据
-            if not all_data1:  # 如果所有机型都没有工况1中的数据
-                data1 = pd.DataFrame(columns=columns)
-            else:
-                data1 = pd.concat(all_data1)
-            if not all_data3:  # 如果所有机型都没有工况3中的数据
-                data3 = pd.DataFrame(columns=columns)
-            else:
-                data3 = pd.concat(all_data3)
-
-            all_data1, all_data3 = [], []
-
-            res = warning_fault2(task_id, data1, data3, info, logger, use_tmp)
-            if isinstance(res, int):
-                logger.info("当前风场无数据，无预测结果\n")
-                continue
-            else:
-                is_not_data = False
-                logger.info("故障预警完成，开始结果入库...")
-                save_fault(res, task_id, logger)
-                logger.info(f"风场`{site}`的预测结果入库完成。\n")
+    logger.info(f"正在进行工况划分...")
+    data1 = state_one(data, scope)
+    all_data1.append(data1)
+    data3 = state_three(data, scope)
+    all_data3.append(data3)
+    logger.info(f"`{type_}`工况划分完成...")
+    #     type_no += 1
+    # site_no += 1
     if mode == 'predict':
-        logger.info("所有风场数据预测完成\n")
+        # 如果是预测任务，如果选择多个风场，则处理完一个预测一个，不再等待全部处理后再预测
+        logger.info(f"风场{site}-机型{type_}数据处理完成，开始进行故障预测...")
+        from main_code.prediction import warning_fault2
+        from main_code.data_base import save_fault
+        # 对于预测任务而言，当一个风场的所有数据处理完成后就进行预测，而不再进行缓存
+        # 因此，需要将`all_data1`和`all_data3`恢复为空，以存储下一个风场的数据
+        if not all_data1:  # 如果所有机型都没有工况1中的数据
+            data1 = pd.DataFrame(columns=columns)
+        else:
+            data1 = pd.concat(all_data1)
+        if not all_data3:  # 如果所有机型都没有工况3中的数据
+            data3 = pd.DataFrame(columns=columns)
+        else:
+            data3 = pd.concat(all_data3)
+
+        # all_data1, all_data3 = [], []
+
+        res = warning_fault2(task_id, data1, data3, info, logger, use_tmp)
+        if isinstance(res, int):
+            logger.info("当前机型无数据，无预测结果\n")
+            # continue
+        else:
+            is_not_data = False
+            logger.info("故障预警完成，开始结果入库...")
+            save_fault(res, task_id, logger)
+            logger.info(f"机型`{type_}`的预测结果入库完成。\n")
+    # if mode == 'predict':
+        logger.info("机型数据预测完成\n")
         if is_not_data:
             return 3
         return 1
     else:
         num_d = 0
-        logger.info("所有风场处理完成，正在进行拼接...")
+        logger.info("机型数据处理完成，正在进行拼接...")
         if all_data1:
             data1 = pd.concat(all_data1)
         else:
